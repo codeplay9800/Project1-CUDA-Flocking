@@ -157,7 +157,7 @@ void Boids::initSimulation(int N) {
 	checkCUDAErrorWithLine("kernGenerateRandomPosArray failed!");
 
 	// LOOK-2.1 computing grid params
-	gridCellWidth = 2.0f * std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
+	gridCellWidth =  2 * std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
 	int halfSideCount = (int)(scene_scale / gridCellWidth) + 1;
 	gridSideCount = 2 * halfSideCount;
 
@@ -807,7 +807,7 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 
 
 	//region2
-	else if (currPos.x >= (currGridPos.x + (cellWidth / 2)) && currPos.y < (currGridPos.y + (cellWidth / 2)))
+	if (currPos.x >= (currGridPos.x + (cellWidth / 2)) && currPos.y < (currGridPos.y + (cellWidth / 2)))
 	{
 		checkiX = glm::floor((currPos.x + (cellWidth / 2) - gridMin.x) * inverseCellWidth);
 		checkiY = iY;
@@ -1025,7 +1025,7 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 	}
 
 	//region3
-	else if (currPos.x < (currGridPos.x + (cellWidth / 2)) && currPos.y >= (currGridPos.y + (cellWidth / 2)))
+	if (currPos.x < (currGridPos.x + (cellWidth / 2)) && currPos.y >= (currGridPos.y + (cellWidth / 2)))
 	{
 		checkiX = glm::floor((currPos.x - (cellWidth / 2) - gridMin.x) * inverseCellWidth);
 		checkiY = iY;
@@ -1243,7 +1243,7 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 	}
 
 	////region4
-	else
+	if (currPos.x >= (currGridPos.x + (cellWidth / 2)) && currPos.y >= (currGridPos.y + (cellWidth / 2)))
 	{
 		checkiX = glm::floor((currPos.x + (cellWidth / 2) - gridMin.x) * inverseCellWidth);
 		checkiY = iY;
