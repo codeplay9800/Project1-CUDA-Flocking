@@ -162,7 +162,7 @@ void Boids::initSimulation(int N) {
 	checkCUDAErrorWithLine("kernGenerateRandomPosArray failed!");
 
 	// LOOK-2.1 computing grid params
-	gridCellWidth = 2 * std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
+	gridCellWidth = 2.0 * std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
 	int halfSideCount = (int)(scene_scale / gridCellWidth) + 1;
 	gridSideCount = 2 * halfSideCount;
 
@@ -410,9 +410,6 @@ __global__ void kernIdentifyCellStartEnd(int N, int* particleGridIndices,
 		return;
 	}
 
-	gridCellStartIndices[index] = -1;
-	gridCellEndIndices[index] = -1;
-
 	//Check only for next Element
 	if (index == 0)
 	{
@@ -606,17 +603,9 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 	glm::vec3 seperation = glm::vec3(0, 0, 0);
 	glm::vec3 perceived_velocity = glm::vec3(0, 0, 0);
 
-
 	glm::vec3 currPos = pos[index];
 
 	// Identify Grid Cell
-	float iX = glm::floor((currPos.x - gridMin.x) * inverseCellWidth);
-	float iY = glm::floor((currPos.y - gridMin.y) * inverseCellWidth);
-	float iZ = glm::floor((currPos.z - gridMin.z) * inverseCellWidth);
-
-	float checkiX = 0, checkiY = 0, checkiZ = 0;
-
-	int currGridIdx = gridIndex3Dto1D(iX, iY, iZ, gridResolution);
 	glm::vec3 currGridPos = glm::floor((currPos - gridMin) * inverseCellWidth);
 	glm::vec3 currPosinGridRounded = glm::round((currPos - gridMin) * inverseCellWidth);
 
@@ -636,10 +625,11 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 			{
 				int neighborCell = gridIndex3Dto1D(x, y, z, gridResolution);
 
-				if (gridCellStartIndices[neighborCell] == -1)
+				if (gridCellStartIndices[neighborCell] == -1 || gridCellEndIndices[neighborCell] == -1)
 				{
 					continue;
 				}
+
 				computeVelocityChange2(index, gridCellStartIndices[neighborCell], gridCellEndIndices[neighborCell], neighborCountCenter,
 					neighborCountPercieved, center, seperation, perceived_velocity, particleArrayIndices, pos, vel1);
 				
@@ -649,7 +639,7 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 
 	glm::vec3 resultVel2 = glm::vec3(0, 0, 0);
 	if (neighborCountCenter > 0) {
-		center = (center / (float)neighborCountCenter - pos[index]);
+		center = (center / (float)neighborCountCenter - currPos);
 		resultVel2 += (center)*rule1Scale;
 	}
 	if (neighborCountPercieved > 0) {
@@ -663,9 +653,8 @@ __global__ void kernUpdateVelNeighborSearchScattered(
 	resultVel2 += vel1[index];
 	//Clamp
 	resultVel2 = glm::clamp(resultVel2, -1 * maxSpeed, maxSpeed);
+	//resultVel2 = glm::normalize(resultVel2) * maxSpeed;
 	vel2[index] = resultVel2;
-
-
 }
 
 __global__ void kernUpdateVelNeighborSearchCoherent(
@@ -1135,40 +1124,11 @@ void Boids::stepSimulationNaive(float dt) {
 void SortIndicesWithGrid(int N) {
 
 
-
-	/*std::unique_ptr<int[]>intKeys{ new int[N] };
-	std::unique_ptr<int[]>intValues{ new int[N] };
-
-
-	cudaMemcpy(intKeys.get(), dev_particleGridIndices, sizeof(int) * N, cudaMemcpyDeviceToHost);
-	cudaMemcpy(intValues.get(), dev_particleGridIndices, sizeof(int) * N, cudaMemcpyDeviceToHost);
-	checkCUDAErrorWithLine("memcpy back failed!");
-
-	std::cout << "before unstable sort: " << std::endl;
-	for (int i = 0; i < N; i++) {
-		std::cout << "  key: " << intKeys[i];
-		std::cout << " value: " << intValues[i] << std::endl;
-	}*/
-
 	dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
 	dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
 
 	// LOOK-2.1 Example for using thrust::sort_by_key
 	thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + N, dev_thrust_particleArrayIndices);
-
-	//// How to copy data back to the CPU side from the GPU
-	////cudaMemcpy(dev_particleGridIndices, dev_thrust_particleGridIndices.get(), sizeof(int) * N, cudaMemcpyDeviceToDevice);
-	////cudaMemcpy(dev_particleArrayIndices, dev_thrust_particleArrayIndices.get(), sizeof(int) * N, cudaMemcpyDeviceToDevice);
-	//// How to copy data back to the CPU side from the GPU
-	//cudaMemcpy(intKeys.get(), dev_particleGridIndices, sizeof(int) * N, cudaMemcpyDeviceToHost);
-	//cudaMemcpy(intValues.get(), dev_particleArrayIndices, sizeof(int) * N, cudaMemcpyDeviceToHost);
-	//checkCUDAErrorWithLine("memcpy back failed!");
-
-	//std::cout << "after unstable sort: " << std::endl;
-	//for (int i = 0; i < N; i++) {
-	//	std::cout << "  key: " << intKeys[i];
-	//	std::cout << " value: " << intValues[i] << std::endl;
-	//}
 
 
 }
@@ -1196,13 +1156,6 @@ void Boids::stepSimulationScatteredGrid(float dt) {
 
 	//Sort
 	SortIndicesWithGrid(numObjects);
-
-	//thrust::device_ptr<int> dev_thrust_particleGridIndices(dev_particleGridIndices);
-	//thrust::device_ptr<int> dev_thrust_particleArrayIndices(dev_particleArrayIndices);
-
-	//// LOOK-2.1 Example for using thrust::sort_by_key
-	//thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + numObjects, dev_thrust_particleArrayIndices);
-
 	//
 	//First Initialise All Start and End buffers to -1
 
@@ -1220,7 +1173,6 @@ void Boids::stepSimulationScatteredGrid(float dt) {
 	kernUpdatePos << <fullBlocksPerGrid, blockSize >> > (numObjects, dt, dev_pos, dev_vel1);
 	glm::vec3* temp;
 
-	//thrust::swap(dev_vel1, dev_vel2);
 	temp = dev_vel1;
 	dev_vel1 = dev_vel2;
 	dev_vel2 = temp;
